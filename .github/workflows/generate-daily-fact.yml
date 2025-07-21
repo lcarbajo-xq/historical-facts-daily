@@ -1,0 +1,69 @@
+name: Generate Daily Historical Fact
+
+on:
+  schedule:
+    # Ejecutar todos los días a las 00:01 UTC
+    - cron: '1 0 * * *'
+  workflow_dispatch: # Permite ejecutar el workflow manualmente desde la interfaz de GitHub
+
+jobs:
+  generate-fact:
+    runs-on: ubuntu-latest
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: '8'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Generate and store historical fact
+        id: generate
+        run: |
+          echo "::group::Generating historical fact"
+          echo "Start time: $(date)"
+          OUTPUT=$(pnpm tsx scripts/generate-historical-fact.ts)
+          EXECUTION_STATUS=$?
+          echo "End time: $(date)"
+          echo "Execution output:"
+          echo "$OUTPUT"
+          echo "::endgroup::"
+
+          # Guardar el resultado para el siguiente paso
+          echo "status=$EXECUTION_STATUS" >> $GITHUB_OUTPUT
+          echo "output<<EOF" >> $GITHUB_OUTPUT
+          echo "$OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Report execution status
+        if: always()
+        run: |
+          echo "::group::Execution Summary"
+          echo "Workflow run at: $(date)"
+          echo "Status code: ${{ steps.generate.outputs.status }}"
+          echo "Generation output:"
+          echo "${{ steps.generate.outputs.output }}"
+          echo "::endgroup::"
+
+          if [ "${{ steps.generate.outputs.status }}" = "0" ]; then
+            echo "✅ Historical fact generated and stored successfully"
+          else
+            echo "❌ Failed to generate or store historical fact"
+            exit 1
+          fi
