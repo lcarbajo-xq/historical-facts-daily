@@ -47,9 +47,11 @@ jobs:
 
           # Guardar el resultado para el siguiente paso
           echo "status=$EXECUTION_STATUS" >> $GITHUB_OUTPUT
-          echo "output<<EOF" >> $GITHUB_OUTPUT
-          echo "$OUTPUT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "status=$EXECUTION_STATUS" >> $GITHUB_OUTPUT
+          echo "output<<EOF"
+          echo "$OUTPUT"
+          echo "EOF"
+          } >> $GITHUB_OUTPUT
 
       - name: Report execution status
         if: always()
