@@ -12,24 +12,20 @@ export const supabase = createClient<{
   historical_facts: HistoricalFact 
 }>(supabaseUrl, supabaseAnonKey)
 
-export async function getHistoricalFact(date?: string) {
-  const today = date || new Date().toISOString().split('T')[0]
-  console.log('Buscando hecho histórico para la fecha:', today)
-  
+export async function getHistoricalFact() {
+  const today = new Date().toISOString().split('T')[0]
+
   const { data, error } = await supabase
     .from('historical_facts')
     .select('*')
     .eq('publish_date', today)
-    
+
   if (error) {
     console.error('Error en la consulta:', error.message)
     return null
   }
 
-  console.log('Datos encontrados:', data)
-
   if (!data || data.length === 0) {
-    console.log('No se encontraron datos para la fecha:', today)
     return null
   }
 

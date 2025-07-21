@@ -1,60 +1,18 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { Calendar, Share2, Terminal, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { type HistoricalFact } from '@/lib/supabase/types'
+import { useHistoricalFact } from '@/hooks/use-historical-fact'
 
 interface Props {
   fact: HistoricalFact
 }
 
 export function HistoricalFactView({ fact }: Props) {
-  const [displayText, setDisplayText] = useState('')
-  const [isTyping, setIsTyping] = useState(true)
-  const [currentDate, setCurrentDate] = useState('')
-
-  useEffect(() => {
-    const today = new Date()
-    setCurrentDate(
-      today.toLocaleDateString('es-ES', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      })
-    )
-  }, [])
-
-  useEffect(() => {
-    const text = fact.title
-    let index = 0
-    setDisplayText('')
-    setIsTyping(true)
-
-    const timer = setInterval(() => {
-      if (index < text.length) {
-        setDisplayText(text.slice(0, index + 1))
-        index++
-      } else {
-        setIsTyping(false)
-        clearInterval(timer)
-      }
-    }, 50)
-
-    return () => clearInterval(timer)
-  }, [fact.title])
-
-  const shareContent = () => {
-    if (navigator.share) {
-      navigator.share({
-        title: 'Dato Histórico del Día',
-        text: `${fact.title} - ${fact.description}`,
-        url: window.location.href
-      })
-    }
-  }
+  const { displayText, isTyping, currentDate, shareContent } =
+    useHistoricalFact(fact)
 
   return (
     <div className='min-h-screen bg-black text-emerald-100 relative overflow-hidden w-full'>

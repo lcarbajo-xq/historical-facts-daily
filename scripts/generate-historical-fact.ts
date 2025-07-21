@@ -87,13 +87,9 @@ async function main() {
   try {
     const today = new Date().toISOString().split('T')[0];
     const [year, month, day] = today.split('-');
-    console.log(`Buscando hechos históricos para el día ${day} del mes ${month} (en cualquier año)`);
     
     const fact = await generateHistoricalFact(today);
-    console.log('Hecho histórico generado:', JSON.stringify(fact, null, 2));
-    
     await insertHistoricalFact(fact);
-    console.log('Hecho histórico insertado correctamente en Supabase');
   } catch (error) {
     console.error('Error:', error);
     process.exit(1);
