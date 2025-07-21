@@ -46,11 +46,11 @@ jobs:
           echo "::endgroup::"
 
           # Guardar el resultado para el siguiente paso
-          echo "status=$EXECUTION_STATUS" >> $GITHUB_OUTPUT
-          echo "status=$EXECUTION_STATUS" >> $GITHUB_OUTPUT
-          echo "output<<EOF"
-          echo "$OUTPUT"
-          echo "EOF"
+          {
+            echo "status=$EXECUTION_STATUS"
+            echo "output<<EOF"
+            echo "$OUTPUT"
+            echo "EOF"
           } >> $GITHUB_OUTPUT
 
       - name: Report execution status
