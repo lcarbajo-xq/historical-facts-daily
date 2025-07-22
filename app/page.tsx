@@ -1,7 +1,17 @@
 import { getHistoricalFact } from '@/lib/supabase/client'
 import { HistoricalFactView } from '@/components/ui/historical-fact-view'
 
+// Revalidar la página cada minuto
+export const revalidate = 60
+
 export default async function Page() {
+  // Forzar revalidación de la caché
+  const headers = {
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0'
+  }
+
   const fact = await getHistoricalFact()
 
   if (!fact) {
