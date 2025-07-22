@@ -28,14 +28,20 @@ const supabaseAdmin = createClient(
 async function generateHistoricalFact(date: string) {
   const [month, day] = date.split('-').slice(1);
   const prompt = `Genera un hecho histórico importante que ocurrió un ${day} de ${month} en la historia (en cualquier año anterior a 2024).
-  IMPORTANTE: Responde SOLO con un objeto JSON válido que siga exactamente esta estructura (sin comentarios ni texto adicional):
+  IMPORTANTE: Responde SOLO con un objeto JSON válido que siga exactamente esta estructura, usando ÚNICAMENTE comillas dobles (") y asegurándote que el JSON sea válido:
   {
     "historical_date": "YYYY-MM-DD",
     "title": "Título corto y conciso",
     "description": "Descripción detallada del hecho histórico con datos relevantes y curiosos",
     "category": "Una de las siguientes categorías: Ciencia, Arte, Política, Deportes, Tecnología, Espacio, Historia",
     "sources": ["Fuente 1", "URL1", "Fuente 2", "URL2"]
-  }`;
+  }
+  
+  Asegúrate de que:
+  1. Todas las cadenas usen comillas dobles (")
+  2. No haya caracteres de escape innecesarios
+  3. No incluyas texto fuera del objeto JSON
+  4. Las URLs sean válidas y accesibles`;
 
   const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
   
@@ -60,15 +66,36 @@ async function generateHistoricalFact(date: string) {
   }
 
   try {
-    // Limpiar el texto de marcadores markdown
-    const cleanText = text.replace(/```json\n|\n```/g, '').trim();
-    const data = JSON.parse(cleanText);
-    return {
-      ...data,
-      publish_date: new Date().toISOString().split('T')[0]
-    };
+    // Limpiar el texto de marcadores markdown y asegurar comillas dobles
+    const cleanText = text
+      .replace(/```json\n|\n```/g, '')
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .trim();
+    
+    // Intentar reparar las comillas simples por dobles si es necesario
+    const jsonText = cleanText.includes('"') ? cleanText : cleanText.replace(/'/g, '"');
+    
+    try {
+      const data = JSON.parse(jsonText);
+      return {
+        ...data,
+        publish_date: new Date().toISOString().split('T')[0]
+      };
+    } catch (innerError) {
+      console.error('Error en el primer intento de parsing:', innerError);
+      console.error('JSON text:', jsonText);
+      // Segundo intento: escapar caracteres especiales
+      const escapedText = jsonText.replace(/\n/g, '\\n');
+      const data = JSON.parse(escapedText);
+      return {
+        ...data,
+        publish_date: new Date().toISOString().split('T')[0]
+      };
+    }
   } catch (e) {
     console.error('Error al analizar la respuesta JSON:', text);
+    console.error('Error detallado:', e);
     throw new Error('Respuesta JSON inválida del modelo');
   }
 }
