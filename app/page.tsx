@@ -8,8 +8,8 @@ export default async function Page() {
   // Forzar revalidación de la caché
   const headers = {
     'Cache-Control': 'no-cache, no-store, must-revalidate',
-    'Pragma': 'no-cache',
-    'Expires': '0'
+    Pragma: 'no-cache',
+    Expires: '0'
   }
 
   const fact = await getHistoricalFact()

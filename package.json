@@ -6,7 +6,10 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "next lint",
-    "start": "next start"
+    "start": "next start",
+    "generate:fact": "pnpm tsx scripts/generate-historical-fact.ts",
+    "generate:fact:test": "NODE_ENV=test pnpm tsx scripts/generate-historical-fact.ts",
+    "test:fact": "node scripts/test-historical-fact.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
