@@ -34,6 +34,7 @@ SUPABASE_SERVICE_KEY=tu_service_role_key_de_supabase
 ### Base de datos
 
 La aplicación usa Supabase con dos tablas:
+
 - `historical_facts` - Datos de producción
 - `historical_facts_test` - Datos de test
 
@@ -42,11 +43,13 @@ La aplicación usa Supabase con dos tablas:
 El proyecto tiene dos workflows de GitHub Actions:
 
 #### 🚀 Producción (`generate-daily-fact.yml`)
+
 - Se ejecuta automáticamente todos los días a las 00:01 UTC
 - Genera un nuevo hecho histórico y lo guarda en la tabla de producción
 - Puede ejecutarse manualmente desde GitHub Actions
 
 #### 🧪 Testing (`test-fact-generation.yml`)
+
 - Se ejecuta manualmente para probar cambios
 - Se ejecuta automáticamente en Pull Requests que modifiquen scripts
 - Usa la tabla de test para evitar contaminar producción
