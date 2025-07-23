@@ -9,6 +9,8 @@ Aplicación web que muestra hechos históricos diarios generados automáticament
 - **Producción**: `pnpm generate:fact` - Genera un hecho histórico y lo guarda en la tabla de producción
 - **Test**: `pnpm generate:fact:test` - Genera un hecho histórico y lo guarda en la tabla de test
 - **Test alternativo**: `pnpm test:fact` - Ejecuta el generador en modo test
+- **Verificar datos de test**: `pnpm check:test-data` - Muestra los datos guardados en la tabla de test
+- **Migración**: `pnpm migrate` - Ejecuta las migraciones de base de datos
 
 ### Modo Test
 
