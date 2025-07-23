@@ -1,0 +1,84 @@
+name: Test Historical Fact Generation
+
+on:
+  workflow_dispatch: # Solo ejecutar manualmente para testing
+  pull_request:
+    paths:
+      - 'scripts/generate-historical-fact.ts'
+      - 'scripts/**'
+      - '.github/workflows/test-fact-generation.yml'
+
+jobs:
+  test-generation:
+    runs-on: ubuntu-latest
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: '8'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Test historical fact generation
+        id: test
+        run: |
+          echo "::group::Testing historical fact generation"
+          echo "🧪 Running in TEST mode - using historical_facts_test table"
+          echo "Start time: $(date)"
+          OUTPUT=$(pnpm generate:fact:test)
+          EXECUTION_STATUS=$?
+          echo "End time: $(date)"
+          echo "Test output:"
+          echo "$OUTPUT"
+          echo "::endgroup::"
+
+          # Guardar el resultado para el siguiente paso
+          {
+            echo "status=$EXECUTION_STATUS"
+            echo "output<<EOF"
+            echo "$OUTPUT"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: Verify test data
+        if: steps.test.outputs.status == '0'
+        run: |
+          echo "::group::Verifying test data"
+          echo "📊 Checking data in test table..."
+          OUTPUT=$(pnpm check:test-data)
+          echo "$OUTPUT"
+          echo "::endgroup::"
+
+      - name: Report test results
+        if: always()
+        run: |
+          echo "::group::Test Summary"
+          echo "Test run at: $(date)"
+          echo "Status code: ${{ steps.test.outputs.status }}"
+          echo "Test output:"
+          echo "${{ steps.test.outputs.output }}"
+          echo "::endgroup::"
+
+          if [ "${{ steps.test.outputs.status }}" = "0" ]; then
+            echo "✅ Test passed - Historical fact generated and stored in test table"
+          else
+            echo "❌ Test failed - Could not generate or store historical fact"
+            exit 1
+          fi

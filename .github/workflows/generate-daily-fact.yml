@@ -38,7 +38,7 @@ jobs:
         run: |
           echo "::group::Generating historical fact"
           echo "Start time: $(date)"
-          OUTPUT=$(pnpm tsx scripts/generate-historical-fact.ts)
+          OUTPUT=$(pnpm generate:fact)
           EXECUTION_STATUS=$?
           echo "End time: $(date)"
           echo "Execution output:"

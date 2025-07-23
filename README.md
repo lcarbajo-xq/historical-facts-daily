@@ -39,7 +39,18 @@ La aplicación usa Supabase con dos tablas:
 
 ### Despliegue
 
-El workflow de GitHub Actions se ejecuta automáticamente todos los días para generar un nuevo hecho histórico.
+El proyecto tiene dos workflows de GitHub Actions:
+
+#### 🚀 Producción (`generate-daily-fact.yml`)
+- Se ejecuta automáticamente todos los días a las 00:01 UTC
+- Genera un nuevo hecho histórico y lo guarda en la tabla de producción
+- Puede ejecutarse manualmente desde GitHub Actions
+
+#### 🧪 Testing (`test-fact-generation.yml`)
+- Se ejecuta manualmente para probar cambios
+- Se ejecuta automáticamente en Pull Requests que modifiquen scripts
+- Usa la tabla de test para evitar contaminar producción
+- Verifica que la generación funciona correctamente
 
 ## Arquitectura
 
