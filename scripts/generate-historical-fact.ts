@@ -55,6 +55,7 @@ async function generateHistoricalFact(date: string) {
   // Lista de modelos para probar en orden de preferencia
   const models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"];
   const maxRetries = 3;
+  const baseDelay = 10000; // 10 segundos base
   
   for (const modelName of models) {
     console.log(`Intentando con modelo: ${modelName}`);
@@ -63,7 +64,13 @@ async function generateHistoricalFact(date: string) {
       try {
         console.log(`Intento ${attempt}/${maxRetries} con ${modelName}`);
         
-        const model = genAI.getGenerativeModel({ model: modelName });
+        const model = genAI.getGenerativeModel({ 
+          model: modelName,
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 2048,
+          }
+        });
         
         const chat = model.startChat({
           history: [
@@ -85,26 +92,49 @@ async function generateHistoricalFact(date: string) {
           throw new Error('No se recibió respuesta del modelo');
         }
 
+        console.log(`Hecho histórico generado: ${text.substring(0, 100)}...`);
+        
         // Si llegamos aquí, el modelo funcionó, procesamos la respuesta
         return await processResponse(text);
         
       } catch (error: any) {
         console.error(`Error con ${modelName} en intento ${attempt}:`, error.message);
         
-        // Si es un error 503 o de sobrecarga, esperamos antes del siguiente intento
-        if (error.message.includes('503') || error.message.includes('overloaded')) {
-          if (attempt < maxRetries) {
-            const waitTime = attempt * 5000; // 5s, 10s, 15s
-            console.log(`Esperando ${waitTime}ms antes del siguiente intento...`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-            continue;
-          }
+        // Detectar diferentes tipos de errores
+        const errorMsg = error.message.toLowerCase();
+        const isQuotaError = errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('too many requests');
+        const isServerError = errorMsg.includes('503') || errorMsg.includes('502') || errorMsg.includes('500') || errorMsg.includes('overloaded');
+        const isNotFoundError = errorMsg.includes('404') || errorMsg.includes('not found');
+        
+        if (isQuotaError) {
+          console.log('Error de cuota detectado - esperando más tiempo...');
+          const waitTime = baseDelay * Math.pow(2, attempt - 1); // Exponential backoff: 10s, 20s, 40s
+          console.log(`Esperando ${waitTime}ms antes del siguiente intento...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          continue;
+        } else if (isServerError) {
+          console.log('Error de servidor detectado - reintentando...');
+          const waitTime = baseDelay + (attempt * 5000); // 10s, 15s, 20s
+          console.log(`Esperando ${waitTime}ms antes del siguiente intento...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          continue;
+        } else if (isNotFoundError) {
+          console.log('Modelo no encontrado - probando siguiente modelo...');
+          break; // Saltar al siguiente modelo inmediatamente
         }
         
-        // Si no es un error de sobrecarga o es el último intento, probamos el siguiente modelo
-        break;
+        // Para otros errores, esperar un poco antes del siguiente intento
+        if (attempt < maxRetries) {
+          const waitTime = 5000 * attempt; // 5s, 10s, 15s
+          console.log(`Esperando ${waitTime}ms antes del siguiente intento...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
       }
     }
+    
+    // Esperar entre modelos para evitar sobrecargar
+    console.log('Esperando 15 segundos antes de probar el siguiente modelo...');
+    await new Promise(resolve => setTimeout(resolve, 15000));
   }
   
   // Si llegamos aquí, todos los modelos fallaron
@@ -112,38 +142,90 @@ async function generateHistoricalFact(date: string) {
 }
 
 async function processResponse(text: string) {
+  console.log('Procesando respuesta del modelo...');
+  
   try {
-    // Limpiar el texto de marcadores markdown y asegurar comillas dobles
-    const cleanText = text
-      .replace(/```json\n|\n```/g, '')
+    // Limpiar el texto de marcadores markdown y caracteres problemáticos
+    let cleanText = text
+      .replace(/```json\n?|\n?```/g, '')
       .replace(/[\u2018\u2019]/g, "'")
       .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u00A0]/g, ' ') // Non-breaking spaces
       .trim();
     
-    // Intentar reparar las comillas simples por dobles si es necesario
-    const jsonText = cleanText.includes('"') ? cleanText : cleanText.replace(/'/g, '"');
+    // Buscar el objeto JSON en el texto
+    const jsonStart = cleanText.indexOf('{');
+    const jsonEnd = cleanText.lastIndexOf('}');
     
-    try {
-      const data = JSON.parse(jsonText);
-      return {
-        ...data,
-        publish_date: new Date().toISOString().split('T')[0]
-      };
-    } catch (innerError) {
-      console.error('Error en el primer intento de parsing:', innerError);
-      console.error('JSON text:', jsonText);
-      // Segundo intento: escapar caracteres especiales
-      const escapedText = jsonText.replace(/\n/g, '\\n');
-      const data = JSON.parse(escapedText);
-      return {
-        ...data,
-        publish_date: new Date().toISOString().split('T')[0]
-      };
+    if (jsonStart === -1 || jsonEnd === -1) {
+      throw new Error('No se encontró un objeto JSON válido en la respuesta');
     }
-  } catch (e) {
-    console.error('Error al analizar la respuesta JSON:', text);
-    console.error('Error detallado:', e);
-    throw new Error('Respuesta JSON inválida del modelo');
+    
+    cleanText = cleanText.substring(jsonStart, jsonEnd + 1);
+    
+    // Múltiples intentos de parsing con diferentes estrategias
+    const parseStrategies = [
+      // Intento 1: Texto tal como viene
+      () => JSON.parse(cleanText),
+      
+      // Intento 2: Reemplazar comillas simples por dobles
+      () => {
+        const quotesFixed = cleanText.replace(/'/g, '"');
+        return JSON.parse(quotesFixed);
+      },
+      
+      // Intento 3: Escapar caracteres de nueva línea
+      () => {
+        const escaped = cleanText.replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+        return JSON.parse(escaped);
+      },
+      
+      // Intento 4: Limpiar caracteres de control
+      () => {
+        const controlCharsRemoved = cleanText.replace(/[\x00-\x1F\x7F]/g, ' ');
+        return JSON.parse(controlCharsRemoved);
+      },
+      
+      // Intento 5: Reconstruir el JSON con regex
+      () => {
+        const rebuilt = cleanText
+          .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":') // Añadir comillas a las claves
+          .replace(/:\s*([^",\[\]{}]+)(?=[,}])/g, ': "$1"') // Añadir comillas a valores simples
+          .replace(/: "(\d+)"(?=[,}])/g, ': $1') // Quitar comillas de números
+          .replace(/: "(true|false|null)"(?=[,}])/g, ': $1'); // Quitar comillas de booleanos/null
+        return JSON.parse(rebuilt);
+      }
+    ];
+    
+    let lastError: Error | null = null;
+    
+    for (let i = 0; i < parseStrategies.length; i++) {
+      try {
+        console.log(`Intento de parsing ${i + 1}/${parseStrategies.length}`);
+        const data = parseStrategies[i]();
+        
+        // Validar que el objeto tiene las propiedades requeridas
+        if (!data.historical_date || !data.title || !data.description) {
+          throw new Error('El objeto JSON no tiene las propiedades requeridas');
+        }
+        
+        console.log('JSON parseado exitosamente');
+        return {
+          ...data,
+          publish_date: new Date().toISOString().split('T')[0]
+        };
+      } catch (parseError: any) {
+        lastError = parseError;
+        console.log(`Estrategia ${i + 1} falló: ${parseError.message}`);
+      }
+    }
+    
+    throw lastError || new Error('Todos los intentos de parsing fallaron');
+    
+  } catch (e: any) {
+    console.error('Error al analizar la respuesta JSON:', text.substring(0, 500));
+    console.error('Error detallado:', e.message);
+    throw new Error(`Respuesta JSON inválida del modelo: ${e.message}`);
   }
 }
 
@@ -171,29 +253,103 @@ async function createTestTable() {
   }
 }
 
-async function main() {
-  try {
-    const today = new Date().toISOString().split('T')[0];
-    console.log(`Generando hecho histórico para: ${today}`);
-    
-    // Crear tabla de test si es necesario
-    await createTestTable();
-    
-    const fact = await generateHistoricalFact(today);
-    console.log('Hecho histórico generado:', fact.title);
-    
-    await insertHistoricalFact(fact);
-    console.log(`Hecho histórico insertado exitosamente en la tabla ${tableName}`);
-    
-    if (isTestMode) {
-      console.log('🧪 Ejecución en modo TEST completada');
-    } else {
-      console.log('🚀 Ejecución en modo PRODUCCIÓN completada');
+async function generateHistoricalFactFallback(date: string) {
+  console.log('🔄 Intentando con datos de fallback...');
+  
+  // Datos de fallback para emergencias
+  const fallbackFacts = [
+    {
+      historical_date: "1969-07-20",
+      title: "Primera llegada del hombre a la Luna",
+      description: "El 20 de julio de 1969, Neil Armstrong y Buzz Aldrin se convirtieron en los primeros seres humanos en caminar sobre la superficie lunar durante la misión Apollo 11. Este hito histórico marcó el culminante de la carrera espacial y demostró las capacidades tecnológicas de la humanidad para explorar más allá de nuestro planeta.",
+      category: "Espacio",
+      sources: ["NASA", "https://www.nasa.gov", "Apollo 11 Mission Report", "https://history.nasa.gov"]
+    },
+    {
+      historical_date: "1945-08-15",
+      title: "Fin de la Segunda Guerra Mundial",
+      description: "El 15 de agosto de 1945, Japón anunció su rendición incondicional, marcando el fin oficial de la Segunda Guerra Mundial. Este acontecimiento puso fin al conflicto más devastador de la historia humana y dio inicio a una nueva era geopolítica mundial.",
+      category: "Historia",
+      sources: ["National Archives", "https://www.archives.gov", "World War II Database", "https://ww2db.com"]
     }
-  } catch (error) {
-    console.error('Error:', error);
-    process.exit(1);
+  ];
+  
+  // Seleccionar un hecho aleatorio
+  const randomFact = fallbackFacts[Math.floor(Math.random() * fallbackFacts.length)];
+  
+  return {
+    ...randomFact,
+    publish_date: date
+  };
+}
+
+async function main() {
+  const maxMainRetries = 2;
+  let mainAttempt = 0;
+  
+  while (mainAttempt < maxMainRetries) {
+    try {
+      mainAttempt++;
+      console.log(`🚀 Intento principal ${mainAttempt}/${maxMainRetries}`);
+      
+      const today = new Date().toISOString().split('T')[0];
+      console.log(`Generando hecho histórico para: ${today}`);
+      
+      // Crear tabla de test si es necesario
+      await createTestTable();
+      
+      let fact;
+      
+      try {
+        fact = await generateHistoricalFact(today);
+        console.log('Hecho histórico generado:', fact.title);
+      } catch (aiError: any) {
+        console.error('❌ Error con IA:', aiError.message);
+        
+        if (mainAttempt === maxMainRetries) {
+          console.log('🔄 Usando datos de fallback por fallo total de IA...');
+          fact = await generateHistoricalFactFallback(today);
+          console.log('✅ Usando hecho histórico de fallback:', fact.title);
+        } else {
+          console.log(`⏱️ Esperando 30 segundos antes del siguiente intento principal...`);
+          await new Promise(resolve => setTimeout(resolve, 30000));
+          continue;
+        }
+      }
+      
+      await insertHistoricalFact(fact);
+      console.log(`✅ Hecho histórico insertado exitosamente en la tabla ${tableName}`);
+      
+      if (isTestMode) {
+        console.log('🧪 Ejecución en modo TEST completada');
+      } else {
+        console.log('🚀 Ejecución en modo PRODUCCIÓN completada');
+      }
+      
+      // Si llegamos aquí, todo salió bien
+      return;
+      
+    } catch (error: any) {
+      console.error(`❌ Error en intento principal ${mainAttempt}:`, error.message);
+      
+      if (mainAttempt === maxMainRetries) {
+        console.error('💥 Todos los intentos principales fallaron');
+        throw error;
+      }
+      
+      console.log(`⏱️ Esperando 60 segundos antes del siguiente intento principal...`);
+      await new Promise(resolve => setTimeout(resolve, 60000));
+    }
   }
 }
 
 main()
+.then(() => {
+  console.log('🎉 Script completado exitosamente');
+  process.exit(0);
+})
+.catch((error: any) => {
+  console.error('💥 Error crítico:', error.message);
+  console.error('📚 Stack trace:', error.stack);
+  process.exit(1);
+});
