@@ -1,4 +1,7 @@
-import { getHistoricalFact } from '@/lib/supabase/client'
+import {
+  getHistoricalFact,
+  getRecentHistoricalFacts
+} from '@/lib/supabase/client'
 import { HistoricalFactView } from '@/components/ui/historical-fact-view'
 
 // Revalidar la página cada minuto
@@ -12,7 +15,10 @@ export default async function Page() {
     Expires: '0'
   }
 
-  const fact = await getHistoricalFact()
+  const [fact, recentFacts] = await Promise.all([
+    getHistoricalFact(),
+    getRecentHistoricalFacts(10) // Aumentamos a 10 para ver mejor la agrupación
+  ])
 
   if (!fact) {
     return (
@@ -28,5 +34,5 @@ export default async function Page() {
     )
   }
 
-  return <HistoricalFactView fact={fact} />
+  return <HistoricalFactView fact={fact} recentFacts={recentFacts} />
 }

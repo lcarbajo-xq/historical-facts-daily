@@ -60,3 +60,24 @@ export async function getHistoricalFacts(limit: number = 10): Promise<Historical
   console.log(`[getHistoricalFacts] Encontrados ${data.length} hechos`)
   return data || []
 }
+
+export async function getRecentHistoricalFacts(limit: number = 5): Promise<HistoricalFact[]> {
+  const today = new Date().toISOString().split('T')[0]
+  
+  console.log(`[getRecentHistoricalFacts] Obteniendo últimos ${limit} hechos anteriores a hoy de tabla: ${tableName}`)
+  
+  const { data, error } = await supabase
+    .from(tableName)
+    .select('*')
+    .lt('publish_date', today)
+    .order('publish_date', { ascending: false })
+    .limit(limit)
+
+  if (error) {
+    console.error('[getRecentHistoricalFacts] Error fetching recent historical facts:', error)
+    return []
+  }
+
+  console.log(`[getRecentHistoricalFacts] Encontrados ${data.length} hechos recientes`)
+  return data || []
+}
